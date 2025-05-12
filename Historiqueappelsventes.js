@@ -10,8 +10,8 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @connect      winprovence.odoo.com
-// @updateURL    https://github.com/lax3is/Historiques-appels-et-ventes/blob/main/Historiqueappelsventes.js
-// @downloadURL  https://github.com/lax3is/Historiques-appels-et-ventes/blob/main/Historiqueappelsventes.js
+// @updateURL    https://raw.githubusercontent.com/lax3is/Historiques-appels-et-ventes/main/Historiqueappelsventes.js
+// @downloadURL  https://raw.githubusercontent.com/lax3is/Historiques-appels-et-ventes/main/Historiqueappelsventes.js
 // ==/UserScript==
 
 (function() {
