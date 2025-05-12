@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Historique de appels et ventes
 // @namespace    http://tampermonkey.net/
-// @version      1.9.0
+// @version      1.9.1
 // @description  Affiche l'historique des tickets et des ventes dans Odoo
 // @author       Your Name
 // @match        https://winprovence.odoo.com/web*
@@ -10,6 +10,8 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @connect      winprovence.odoo.com
+// @updateURL    https://raw.githubusercontent.com/lax3is/Historiques-appels-et-ventes/refs/heads/main/Historiqueappelsventes
+// @downloadURL  https://raw.githubusercontent.com/lax3is/Historiques-appels-et-ventes/refs/heads/main/Historiqueappelsventes
 // ==/UserScript==
 
 (function() {
