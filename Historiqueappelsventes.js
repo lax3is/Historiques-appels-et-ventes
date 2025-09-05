@@ -1,17 +1,15 @@
 // ==UserScript==
-// @name         Historique de appels et ventes
+// @name         Odoo Tickets History
 // @namespace    http://tampermonkey.net/
-// @version      1.9.1
-// @description  Affiche l'historique des tickets et des ventes dans Odoo
-// @author       Your Name
+// @version      1.9.2
+// @description  Affiche l'historique des tickets dans Odoo
+// @author       Alexis Sair
 // @match        https://winprovence.odoo.com/web*
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @connect      winprovence.odoo.com
-// @updateURL    https://raw.githubusercontent.com/lax3is/Historiques-appels-et-ventes/refs/heads/main/Historiqueappelsventes.js
-// @downloadURL  https://raw.githubusercontent.com/lax3is/Historiques-appels-et-ventes/refs/heads/main/Historiqueappelsventes.js
 // ==/UserScript==
 
 (function() {
@@ -206,7 +204,7 @@
         #zone_historique_tickets.visible + #zone_produits_client.visible {
             margin-top: 0;
         }
-        
+
         #zone_produits_client.visible + #zone_historique_tickets.visible {
             margin-top: 0;
         }
@@ -303,6 +301,18 @@
             color: var(--hist-text-color);
             opacity: 0.9;
             font-size: 0.9em;
+        }
+
+        .ticket-timesheet {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            color: var(--hist-text-color);
+            background-color: var(--hist-bg-color);
+            padding: 2px 6px;
+            border-radius: 3px;
+            border: 1px solid var(--hist-border-color);
         }
 
         .ticket-description, .ticket-response-content {
@@ -656,7 +666,7 @@
 
     // Observer les changements de thème de manière plus agressive pour Odoo
     let themeInterval;
-    
+
     // Fonction pour démarrer la vérification périodique, avec annulation sécurisée de l'intervalle précédent
     function startThemeChecking() {
         // Nettoyer l'ancien intervalle s'il existe
@@ -664,7 +674,7 @@
             clearInterval(themeInterval);
             themeInterval = null;
         }
-        
+
         let checkCount = 0;
         themeInterval = setInterval(() => {
             detectDarkTheme();
@@ -675,7 +685,7 @@
             }
         }, 3000);
     }
-    
+
     // Démarrer la vérification initiale
     startThemeChecking();
 
@@ -683,10 +693,10 @@
     function detectDarkTheme() {
         try {
             // Approche simplifiée pour la détection du thème sombre
-            let isDarkMode = document.documentElement.classList.contains('o_dark_mode') || 
-                document.body.classList.contains('o_dark_mode') || 
+            let isDarkMode = document.documentElement.classList.contains('o_dark_mode') ||
+                document.body.classList.contains('o_dark_mode') ||
                 document.querySelector('.o_web_client.o_dark_mode') !== null;
-            
+
             // Vérifier si mode forcé via localStorage
             const forcedTheme = localStorage.getItem('odoo_custom_theme');
             if (forcedTheme === 'dark') {
@@ -694,7 +704,7 @@
             } else if (forcedTheme === 'light') {
                 isDarkMode = false;
             }
-            
+
             // Appliquer ou supprimer la classe selon l'état
             if (isDarkMode) {
                 document.documentElement.classList.add('dark-theme-detected');
@@ -713,20 +723,20 @@
                     darkBtn.classList.remove('active');
                 }
             }
-            
+
             return isDarkMode;
         } catch (error) {
             console.error('[ODOO-EXT] Erreur lors de la détection du thème:', error);
             return false;
         }
     }
-    
+
     // Fonction pour basculer le thème
     function toggleTheme(mode) {
         try {
             // Sauvegarder la préférence
             localStorage.setItem('odoo_custom_theme', mode);
-            
+
             // Classe Odoo officielle
             if (mode === 'dark') {
                 document.documentElement.classList.add('o_dark_mode');
@@ -741,10 +751,10 @@
                     document.querySelector('.o_web_client').classList.remove('o_dark_mode');
                 }
             }
-            
+
             // Mettre à jour l'état des boutons
             detectDarkTheme();
-            
+
             console.log(`[ODOO-EXT] Thème basculé en mode: ${mode}`);
         } catch (error) {
             console.error('[ODOO-EXT] Erreur lors du changement de thème:', error);
@@ -781,7 +791,7 @@
     // Fonction waitForElement adaptée pour Tampermonkey
     function waitForElement(selector, timeout = 10000) {
         console.log('[ODOO-EXT] Attente de l\'élément:', selector);
-        
+
         return new Promise((resolve, reject) => {
             if (document.querySelector(selector)) {
                 console.log('[ODOO-EXT] Élément trouvé immédiatement');
@@ -896,6 +906,68 @@
         return `${day}/${month}/${year}`;
     }
 
+    // Fonction pour récupérer les détails des timesheets
+    async function fetchTimesheetDetails(timesheetIds) {
+        if (!timesheetIds || !Array.isArray(timesheetIds) || timesheetIds.length === 0) {
+            return [];
+        }
+
+        try {
+            const timesheetPayload = {
+                jsonrpc: "2.0",
+                method: "call",
+                params: {
+                    model: "account.analytic.line",
+                    method: "read",
+                    args: [timesheetIds],
+                    kwargs: {
+                        fields: ["unit_amount", "name", "date"]
+                    }
+                },
+                id: 200
+            };
+
+            const response = await makeRequest(
+                'https://winprovence.odoo.com/web/dataset/call_kw/account.analytic.line/read',
+                'POST',
+                timesheetPayload
+            );
+
+            if (response && response.result) {
+                return response.result;
+            }
+            return [];
+        } catch (error) {
+            console.error('[ODOO-EXT] Erreur lors de la récupération des timesheets:', error);
+            return [];
+        }
+    }
+
+    // Fonction pour calculer le temps total passé sur un ticket
+    function calculateTimeSpent(timesheetDetails) {
+        if (!timesheetDetails || !Array.isArray(timesheetDetails) || timesheetDetails.length === 0) {
+            return 0;
+        }
+
+        // Calculer la somme des heures (unit_amount)
+        const totalHours = timesheetDetails.reduce((sum, timesheet) => {
+            return sum + (timesheet.unit_amount || 0);
+        }, 0);
+
+        return totalHours;
+    }
+
+    // Fonction pour formater le temps passé
+    function formatTimeSpent(timeSpent) {
+        if (timeSpent === 0) return '';
+        if (timeSpent < 1) {
+            const minutes = Math.round(timeSpent * 60);
+            return `${minutes}min`;
+        }
+        if (timeSpent === 1) return '1h';
+        return `${timeSpent.toFixed(1)}h`;
+    }
+
     // Fonction pour générer le HTML des tickets
     function generateTicketsHtml(tickets) {
         if (!tickets || !tickets.result || !tickets.result.records) {
@@ -911,7 +983,7 @@
             const stageName = translateStage(ticket.stage_id[1]);
 
             return `
-                <div class="col-12 ticket-item" 
+                <div class="col-12 ticket-item"
                      data-team="${teamInfo.name}"
                      data-date="${ticket.create_date}"
                      data-name="${ticket.name.toLowerCase()}"
@@ -980,7 +1052,7 @@
     async function fetchTickets() {
         try {
             const partnerId = await getIdToProcess();
-            
+
             if (!partnerId) {
                 console.log('[ODOO-EXT] Aucun ID valide trouvé');
                 return null;
@@ -1011,7 +1083,8 @@
                             "user_id",
                             "stage_id",
                             "request_answer",
-                            "description" // Ajout du champ description
+                            "description", // Ajout du champ description
+                            "timesheet_ids" // Ajout du champ feuille de temps
                         ]
                     }
                 },
@@ -1037,7 +1110,7 @@
         const params = new URLSearchParams(window.location.hash.slice(1));
         const model = params.get("model");
         const id = params.get("id");
-        
+
         console.log(`[ODOO-EXT] Analyse de l'URL - Modèle: ${model}, ID: ${id}, URL complète: ${window.location.href}`);
 
         if (model === "res.partner") {
@@ -1048,12 +1121,12 @@
                 console.error("[ODOO-EXT] Aucun ID de ticket trouvé dans l'URL");
                 return null;
             }
-            
+
             console.log(`[ODOO-EXT] Récupération des détails du ticket ${id} pour trouver le client associé`);
             const ticketDetails = await fetchTicketDetails(id);
-            
+
             console.log(`[ODOO-EXT] Détails du ticket ${id}:`, ticketDetails);
-            
+
             if (ticketDetails && ticketDetails.partner_id) {
                 console.log(`[ODOO-EXT] Partner ID récupéré depuis le ticket ${id}:`, ticketDetails.partner_id[0], ticketDetails.partner_id[1]);
                 return ticketDetails.partner_id[0];
@@ -1068,7 +1141,7 @@
             }
 
             console.log(`[ODOO-EXT] Récupération des détails de la commande ${id} pour trouver le client associé`);
-            
+
             const orderPayload = {
                 jsonrpc: "2.0",
                 method: "call",
@@ -1106,7 +1179,7 @@
             console.error(`[ODOO-EXT] Modèle non pris en charge: ${model}. URL: ${window.location.href}`);
             return null;
         }
-        
+
         console.error(`[ODOO-EXT] Impossible de récupérer l'ID du partenaire pour le modèle ${model}`);
         return null;
     }
@@ -1150,11 +1223,11 @@
             );
 
             console.log(`[ODOO-EXT] Détails du ticket ${ticketId} récupérés:`, data);
-            
+
             if (data && data.result && Array.isArray(data.result) && data.result.length > 0) {
                 return data.result[0];
             }
-            
+
             console.error(`[ODOO-EXT] Réponse inattendue lors de la lecture du ticket ${ticketId}:`, data);
             return null;
         } catch (error) {
@@ -1166,7 +1239,7 @@
     // Fonction pour vérifier si l'URL correspond aux patterns autorisés
     function isValidUrl() {
         const hash = window.location.hash;
-        
+
         const isTicketPage = hash.includes("model=helpdesk.ticket") &&
                             hash.includes("view_type=form") &&
                             hash.includes("action=368");
@@ -1176,10 +1249,10 @@
 
         const isSaleOrderPage = hash.includes("model=sale.order") &&
                                hash.includes("view_type=form");
-                               
+
         // Vérification si l'URL contient le paramètre showProducts
         const shouldShowProducts = hash.includes("showProducts=true");
-        
+
         // Si le paramètre showProducts est présent, afficher automatiquement les produits
         if (shouldShowProducts) {
             setTimeout(() => {
@@ -1192,7 +1265,7 @@
         }
 
         const isValid = isTicketPage || isPartnerPage || isSaleOrderPage;
-        
+
         if (isValid) {
             console.log('[ODOO-EXT] Page valide détectée:', {
                 isTicketPage,
@@ -1237,12 +1310,12 @@
         layoutModified = false;
         ticketButtonAdded = false;
         ticketButtonSelected = false;
-        
+
         const hideStyle = document.getElementById('hideChatterContent');
         if (hideStyle) {
             hideStyle.remove();
         }
-        
+
         const bonjourDiv = document.getElementById('bonjourMessage');
         if (bonjourDiv) {
             bonjourDiv.remove();
@@ -1311,53 +1384,53 @@
     // Fonction pour gérer la navigation (modifiée)
     async function handleNavigation(reason = 'url') {
         if (isProcessingNavigation) return;
-        
+
         try {
             isProcessingNavigation = true;
             console.log(`[ODOO-EXT] Navigation détectée (${reason})`);
-            
+
             // Redémarrer la vérification du thème
             startThemeChecking();
-            
+
             // Réduire le délai d'attente à 100ms au lieu de 500ms
             await new Promise(resolve => setTimeout(resolve, 100));
-            
+
             if (!isRelevantView()) {
                 console.log('[ODOO-EXT] Vue non pertinente, skip');
                 return;
             }
-            
+
             // Réinitialiser les états pour s'assurer que tout est bien recréé
             historyAdded = false;
             historyButtonAdded = false;
             productsAdded = false;
             productsButtonAdded = false;
-            
+
             // Supprimer les conteneurs existants pour éviter les doublons
             const existingHistory = document.getElementById('zone_historique_tickets');
             if (existingHistory) {
                 existingHistory.remove();
             }
-            
+
             const existingProducts = document.getElementById('zone_produits_client');
             if (existingProducts) {
                 existingProducts.remove();
             }
-            
+
             // Supprimer les boutons existants
             const existingHistoryButton = document.getElementById('showHistoryButton');
             if (existingHistoryButton) {
                 existingHistoryButton.remove();
             }
-            
+
             const existingProductsButton = document.getElementById('showProductsButton');
             if (existingProductsButton) {
                 existingProductsButton.remove();
             }
-            
+
             // Ajouter les boutons immédiatement
             addButtons();
-            
+
             // Si l'état est sauvegardé comme visible, créer immédiatement l'historique et les produits
             if (getHistoryState()) {
                 const historyButton = document.getElementById('showHistoryButton');
@@ -1365,21 +1438,21 @@
                     historyButton.click();
                 }
             }
-            
+
             if (getProductsState()) {
                 const productsButton = document.getElementById('showProductsButton');
                 if (productsButton) {
                     productsButton.click();
                 }
             }
-            
+
         } finally {
             setTimeout(() => {
                 isProcessingNavigation = false;
             }, 100); // Réduire le délai de déverrouillage à 100ms
         }
     }
-    
+
     // Fonction pour ajouter l'historique des tickets (modifiée)
     async function addTicketHistory() {
         if (historyAdded) return;
@@ -1395,7 +1468,7 @@
         const historyContainer = document.createElement('div');
         historyContainer.id = 'zone_historique_tickets';
         historyContainer.className = 'history-container';
-        
+
         // Ajouter le contenu initial avec la nouvelle structure d'en-tête
         historyContainer.innerHTML = `
             <div class="historique-header">
@@ -1440,11 +1513,11 @@
         // Ajouter les événements aux boutons de thème
         const lightBtn = document.getElementById('light-theme-btn');
         const darkBtn = document.getElementById('dark-theme-btn');
-        
+
         if (lightBtn && darkBtn) {
             lightBtn.addEventListener('click', () => toggleTheme('light'));
             darkBtn.addEventListener('click', () => toggleTheme('dark'));
-            
+
             // Mettre à jour l'état actif
             detectDarkTheme();
         }
@@ -1452,7 +1525,7 @@
         // Charger les tickets
         const tickets = await fetchTickets();
         if (tickets) {
-            updateTicketsList(tickets);
+            await updateTicketsList(tickets);
         }
 
         // Ajouter les gestionnaires d'événements pour les filtres
@@ -1475,7 +1548,7 @@
     }
 
     // Fonction pour mettre à jour la liste des tickets
-    function updateTicketsList(tickets) {
+    async function updateTicketsList(tickets) {
         const ticketsList = document.getElementById('ticketsList');
         if (!ticketsList) return;
 
@@ -1484,7 +1557,20 @@
             return;
         }
 
-        const html = tickets.result.records.map(ticket => {
+        // Récupérer les détails des timesheets pour tous les tickets
+        const ticketsWithTime = await Promise.all(tickets.result.records.map(async (ticket) => {
+            const timesheetDetails = await fetchTimesheetDetails(ticket.timesheet_ids);
+            const timeSpent = calculateTimeSpent(timesheetDetails);
+            const timeSpentFormatted = formatTimeSpent(timeSpent);
+            
+            return {
+                ...ticket,
+                timeSpent,
+                timeSpentFormatted
+            };
+        }));
+
+        const html = ticketsWithTime.map(ticket => {
             const teamInfo = getTeamIconById(ticket.team_id[0]);
             const priorityClass = getPriorityClass(ticket.priority);
             const stageName = translateStage(ticket.stage_id[1]);
@@ -1511,6 +1597,12 @@
                             <i class="fa fa-user"></i>
                             ${userName}
                         </div>
+                        ${ticket.timeSpentFormatted ? `
+                            <div class="ticket-timesheet">
+                                <i class="fa fa-clock-o"></i>
+                                ${ticket.timeSpentFormatted}
+                            </div>
+                        ` : ''}
                         <span class="ticket-status">${stageName}</span>
                     </div>
                     ${ticket.description ? `
@@ -1573,7 +1665,7 @@
     async function fetchClientProducts() {
         try {
             const partnerId = await getIdToProcess();
-            
+
             if (!partnerId) {
                 console.log('[ODOO-EXT] Aucun ID de client valide trouvé');
                 return null;
@@ -1628,7 +1720,7 @@
             const parser = new DOMParser();
             const doc = parser.parseFromString(response.result.html, 'text/html');
             const rows = doc.querySelectorAll('tr[data-id]');
-            
+
             console.log('[ODOO-EXT] Nombre de lignes trouvées:', rows.length);
 
             // Regrouper les produits par référence
@@ -1658,7 +1750,7 @@
 
                         // Créer une clé unique pour le produit
                         const productKey = `${productCode}-${productName}`;
-                        
+
                         if (!groupedProducts[reference].products[productKey]) {
                             groupedProducts[reference].products[productKey] = {
                                 code: productCode,
@@ -1680,7 +1772,7 @@
             // Transformer les données en format compatible avec l'affichage existant
             const products = {
                 result: {
-                    records: Object.entries(groupedProducts).flatMap(([reference, group]) => 
+                    records: Object.entries(groupedProducts).flatMap(([reference, group]) =>
                         Object.values(group.products).map(product => ({
                             name: product.name,
                             default_code: product.code,
@@ -1707,7 +1799,7 @@
         return new Promise((resolve, reject) => {
             const startTime = new Date().getTime();
             console.log(`[ODOO-EXT] Début de la requête ${method} vers ${url}`);
-            
+
             GM_xmlhttpRequest({
                 method: method,
                 url: url,
@@ -1720,10 +1812,10 @@
                 onload: function(response) {
                     const endTime = new Date().getTime();
                     const duration = endTime - startTime;
-                    
+
                     console.log(`[ODOO-EXT] Réponse reçue en ${duration}ms avec statut: ${response.status}`);
                     console.log(`[ODOO-EXT] En-têtes de réponse:`, response.responseHeaders);
-                    
+
                     try {
                         const data = JSON.parse(response.responseText);
                         console.log('[ODOO-EXT] Réponse décodée:', data);
@@ -1871,7 +1963,7 @@
         const productsContainer = document.createElement('div');
         productsContainer.id = 'zone_produits_client';
         productsContainer.className = 'products-container';
-        
+
         // Ajouter le contenu initial avec la structure d'en-tête
         productsContainer.innerHTML = `
             <div class="produits-header">
@@ -1908,7 +2000,7 @@
         console.log('[ODOO-EXT] Conteneur des produits créé:', productsContainer);
         console.log('[ODOO-EXT] ID du conteneur:', productsContainer.id);
         console.log('[ODOO-EXT] Classes du conteneur:', productsContainer.className);
-        
+
         // Vérifier que le conteneur est bien dans le DOM
         const verifyContainer = document.getElementById('zone_produits_client');
         if (verifyContainer) {
@@ -1920,11 +2012,11 @@
         // Ajouter les événements aux boutons de thème
         const lightBtn = document.getElementById('light-theme-btn-products');
         const darkBtn = document.getElementById('dark-theme-btn-products');
-        
+
         if (lightBtn && darkBtn) {
             lightBtn.addEventListener('click', () => toggleTheme('light'));
             darkBtn.addEventListener('click', () => toggleTheme('dark'));
-            
+
             // Mettre à jour l'état actif
             detectDarkTheme();
         }
@@ -1937,7 +2029,7 @@
 
         // Ajouter les gestionnaires d'événements pour les filtres
         setupProductFilters();
-        
+
         // Afficher selon l'état sauvegardé
         const shouldBeVisible = getProductsState();
         if (shouldBeVisible) {
@@ -1967,7 +2059,7 @@
 
         // Vérifier si le conteneur de boutons existe déjà
         let buttonContainer = document.querySelector('.buttons-container');
-        
+
         // Créer le conteneur pour les boutons s'il n'existe pas
         if (!buttonContainer) {
             buttonContainer = document.createElement('div');
@@ -1984,12 +2076,12 @@
 
             historyButton.addEventListener('click', function() {
                 let historyContainer = document.getElementById('zone_historique_tickets');
-                
+
                 if (historyContainer) {
                     historyContainer.classList.toggle('visible');
                     const isVisible = historyContainer.classList.contains('visible');
                     saveHistoryState(isVisible);
-                    
+
                     if (isVisible) {
                         historyButton.innerHTML = '<i class="fa fa-times"></i> Masquer l\'historique';
                     } else {
@@ -2019,10 +2111,10 @@
 
             productsButton.addEventListener('click', function() {
                 let productsContainer = document.getElementById('zone_produits_client');
-                
+
                 if (productsContainer) {
                     const wasVisible = productsContainer.classList.contains('visible');
-                    
+
                     if (wasVisible) {
                         productsContainer.classList.remove('visible');
                         productsContainer.style.display = 'none';
@@ -2055,8 +2147,8 @@
     // Observer les changements dans le DOM
     const viewObserver = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
-            if (mutation.target.classList && 
-                (mutation.target.classList.contains('o_content') || 
+            if (mutation.target.classList &&
+                (mutation.target.classList.contains('o_content') ||
                  mutation.target.classList.contains('o_action_manager'))) {
                 handleNavigation('view');
                 break;
@@ -2084,7 +2176,7 @@
         const chatterToolbar = event.target.closest('.o_ChatterTopbar_tools');
         const bonjourMessage = event.target.closest('#bonjourMessage');
         const chatterTopbar = event.target.closest('.o_Chatter_topbar');
-        
+
         if (!chatterToolbar && !bonjourMessage && !chatterTopbar) {
             restoreDefaultDisplay();
         }
@@ -2101,7 +2193,7 @@
             if (currentUrl.includes('showProducts=true')) {
                 return currentUrl;
             }
-            
+
             // Vérifier si l'URL contient déjà des paramètres
             if (currentUrl.includes('#')) {
                 // Ajouter le paramètre showProducts=true à la fin
@@ -2115,7 +2207,7 @@
             return window.location.href;
         }
     }
-    
+
     // Ajouter un bouton pour copier l'URL des produits
     function addCopyUrlButton() {
         // Chercher le conteneur des boutons de produits
@@ -2123,7 +2215,7 @@
         if (!productsHeader || document.getElementById('copyProductsUrlButton')) {
             return;
         }
-        
+
         // Créer le bouton pour copier l'URL
         const copyButton = document.createElement('button');
         copyButton.id = 'copyProductsUrlButton';
@@ -2132,7 +2224,7 @@
         copyButton.className = 'filter-input';
         copyButton.style.marginLeft = '10px';
         copyButton.style.cursor = 'pointer';
-        
+
         // Ajouter l'événement de clic
         copyButton.addEventListener('click', function() {
             const url = generateProductsUrl();
@@ -2143,7 +2235,7 @@
                     copyButton.innerHTML = '<i class="fa fa-check"></i> URL copiée!';
                     copyButton.style.backgroundColor = 'var(--hist-btn-bg)';
                     copyButton.style.color = 'white';
-                    
+
                     // Restaurer le texte original après 2 secondes
                     setTimeout(() => {
                         copyButton.innerHTML = originalText;
@@ -2156,7 +2248,7 @@
                     alert('Impossible de copier l\'URL. Veuillez réessayer.');
                 });
         });
-        
+
         // Ajouter le bouton au conteneur
         productsHeader.appendChild(copyButton);
         console.log('[ODOO-EXT] Bouton de copie d\'URL ajouté');
@@ -2166,22 +2258,22 @@
     async function diagnoseProductsIssue() {
         try {
             console.log('[ODOO-EXT] === DÉBUT DIAGNOSTIC PRODUITS CLIENTS ===');
-            
+
             // 1. Vérifier l'URL actuelle
             console.log('[ODOO-EXT] URL actuelle:', window.location.href);
-            
+
             // 2. Tenter de récupérer l'ID du client
             const partnerId = await getIdToProcess();
             console.log('[ODOO-EXT] ID du client détecté:', partnerId);
-            
+
             if (!partnerId) {
                 console.error('[ODOO-EXT] ERREUR: Impossible d\'obtenir l\'ID du client. Vérifiez que vous êtes sur une page cliente, un ticket ou une commande.');
                 return;
             }
-            
+
             // 3. Tester une requête simple pour vérifier les droits d'accès
             console.log('[ODOO-EXT] Test de connexion à l\'API Odoo...');
-            
+
             const testPayload = {
                 jsonrpc: "2.0",
                 method: "call",
@@ -2195,22 +2287,22 @@
                 },
                 id: 99999
             };
-            
+
             const testResponse = await makeRequestWithDetailed(
                 'https://winprovence.odoo.com/web/dataset/call_kw/res.partner/read',
                 'POST',
                 testPayload
             );
-            
+
             if (testResponse && testResponse.result) {
                 console.log('[ODOO-EXT] Test API réussi:', testResponse.result);
             } else {
                 console.error('[ODOO-EXT] ERREUR: Test API échoué, problème d\'accès à l\'API Odoo');
             }
-            
+
             // 4. Vérifier si le modèle product.product est accessible
             console.log('[ODOO-EXT] Test d\'accès au modèle product.product...');
-            
+
             const productModelPayload = {
                 jsonrpc: "2.0",
                 method: "call",
@@ -2226,22 +2318,22 @@
                 },
                 id: 99998
             };
-            
+
             const productModelResponse = await makeRequestWithDetailed(
                 'https://winprovence.odoo.com/web/dataset/call_kw/product.product/search_read',
                 'POST',
                 productModelPayload
             );
-            
+
             if (productModelResponse && productModelResponse.result) {
                 console.log('[ODOO-EXT] Accès au modèle product.product réussi:', productModelResponse.result);
             } else {
                 console.error('[ODOO-EXT] ERREUR: Impossible d\'accéder au modèle product.product');
             }
-            
+
             // 5. Tester spécifiquement la requête de produits clients
             console.log('[ODOO-EXT] Test de la requête de produits clients...');
-            
+
             const productsPayload = {
                 jsonrpc: "2.0",
                 method: "call",
@@ -2259,13 +2351,13 @@
                 },
                 id: 99997
             };
-            
+
             const productsResponse = await makeRequestWithDetailed(
                 'https://winprovence.odoo.com/web/dataset/call_kw/product.product/web_search_read',
                 'POST',
                 productsPayload
             );
-            
+
             if (productsResponse && productsResponse.result) {
                 if (productsResponse.result.records && productsResponse.result.records.length > 0) {
                     console.log('[ODOO-EXT] Requête produits clients réussie:', productsResponse.result.records);
@@ -2275,31 +2367,31 @@
             } else {
                 console.error('[ODOO-EXT] ERREUR: Échec de la requête de produits clients');
             }
-            
+
             console.log('[ODOO-EXT] === FIN DIAGNOSTIC PRODUITS CLIENTS ===');
-            
+
         } catch (error) {
             console.error('[ODOO-EXT] Erreur lors du diagnostic:', error);
         }
     }
-    
+
     // Fonction pour mettre à jour le bouton des produits
     function updateProductsButton() {
         try {
             const button = document.getElementById('showProductsButton');
             if (!button) return;
-            
+
             // Ajouter un menu contextuel au bouton
             button.oncontextmenu = function(e) {
                 e.preventDefault();
                 diagnoseProductsIssue();
                 return false;
             };
-            
+
             // Ajouter un attribut title pour indiquer cette fonctionnalité
             button.title = 'Clic gauche: Afficher/masquer les produits | Clic droit: Diagnostiquer les problèmes';
         } catch (error) {
             console.error('[ODOO-EXT] Erreur lors de la mise à jour du bouton produits:', error);
         }
     }
-})(); 
+})();
