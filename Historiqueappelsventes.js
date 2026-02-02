@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Odoo Tickets History
 // @namespace    http://tampermonkey.net/
-// @version      2.0.0
+// @version      2.0.1
 // @description  Affiche l'historique des tickets dans Odoo
 // @author       Alexis Sair
 // @match        https://winprovence.odoo.com/web*
