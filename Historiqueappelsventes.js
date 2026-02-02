@@ -5,6 +5,20 @@
 // @description  Affiche l'historique des tickets dans Odoo
 // @author       Alexis Sair
 // @match        https://winprovence.odoo.com/web*
+// @match        https://winprovence.odoo.com/*
+// @match        http://winprovence.odoo.com/*
+// @match        https://*/web*
+// @match        http://*/web*
+// @match        https://winprovence.odoo.com/*
+// @match        https://*.odoo.com/*
+// @match        https://winprovence.fr/*
+// @match        http://winprovence.fr/*
+// @match        https://*.winprovence.fr/*
+// @match        http://*.winprovence.fr/*
+// @match        https://www.winprovence.fr/*
+// @match        http://www.winprovence.fr/*
+// @match        https://winprovence.odoo.fr/*
+// @match        http://winprovence.odoo.fr/*
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
