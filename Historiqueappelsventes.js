@@ -1,16 +1,13 @@
 // ==UserScript==
 // @name         Odoo Tickets History
 // @namespace    http://tampermonkey.net/
-// @version      2.0.1
+// @version      2.2.2
 // @description  Affiche l'historique des tickets dans Odoo
 // @author       Alexis Sair
-// @match        https://winprovence.odoo.com/web*
-// @match        https://winprovence.odoo.com/*
-// @match        http://winprovence.odoo.com/*
 // @match        https://*/web*
 // @match        http://*/web*
-// @match        https://winprovence.odoo.com/*
 // @match        https://*.odoo.com/*
+// @match        http://*.odoo.com/*
 // @match        https://winprovence.fr/*
 // @match        http://winprovence.fr/*
 // @match        https://*.winprovence.fr/*
@@ -24,6 +21,10 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @connect      winprovence.odoo.com
+// @connect      *.odoo.com
+// @connect      winprovence.fr
+// @connect      *.winprovence.fr
+// @connect      winprovence.odoo.fr
 // @updateURL    https://raw.githubusercontent.com/lax3is/Historiques-appels-et-ventes/refs/heads/main/Historiqueappelsventes.js
 // @downloadURL  https://raw.githubusercontent.com/lax3is/Historiques-appels-et-ventes/refs/heads/main/Historiqueappelsventes.js
 // ==/UserScript==
@@ -395,6 +396,11 @@
             background-color: var(--hist-bg-color) !important;
         }
 
+        .ticket-item[data-team="MaterielN2"] {
+            border-left: 4px solid #9C27B0 !important;
+            background-color: var(--hist-bg-color) !important;
+        }
+
         .ticket-team[data-team="Logiciel"] i {
             color: #4CAF50 !important;
         }
@@ -405,6 +411,10 @@
 
         .ticket-team[data-team="RMA"] i {
             color: #FF9800 !important;
+        }
+
+        .ticket-team[data-team="MaterielN2"] i {
+            color: #9C27B0 !important;
         }
 
         .ticket-item[data-team="Logiciel"] .ticket-status {
@@ -419,6 +429,10 @@
             background-color: #FF9800 !important;
         }
 
+        .ticket-item[data-team="MaterielN2"] .ticket-status {
+            background-color: #9C27B0 !important;
+        }
+
         .ticket-item[data-team="Logiciel"]:hover {
             box-shadow: 0 2px 8px rgba(76, 175, 80, 0.2) !important;
         }
@@ -429,6 +443,10 @@
 
         .ticket-item[data-team="RMA"]:hover {
             box-shadow: 0 2px 8px rgba(255, 152, 0, 0.2) !important;
+        }
+
+        .ticket-item[data-team="MaterielN2"]:hover {
+            box-shadow: 0 2px 8px rgba(156, 39, 176, 0.2) !important;
         }
 
         #showHistoryButton, #showProductsButton {
@@ -680,6 +698,12 @@
     // Variable pour éviter les doubles chargements
     let isProcessingNavigation = false;
 
+    // Utiliser automatiquement le domaine courant (odoo.com, winprovence.fr, etc.)
+    const ODOO_BASE_URL = window.location.origin.replace(/\/$/, '');
+    function buildOdooUrl(path) {
+        return `${ODOO_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+    }
+
     // Observer les changements de thème de manière plus agressive pour Odoo
     let themeInterval;
 
@@ -897,17 +921,44 @@
         }
     }
 
-    // Fonction pour obtenir l'icône de l'équipe selon l'ID
-    function getTeamIconById(teamId) {
+    // Fonction pour obtenir les infos de l'équipe selon son nom/ID
+    function getTeamInfo(teamData) {
+        const teamId = Array.isArray(teamData) ? teamData[0] : teamData;
+        const rawTeamName = Array.isArray(teamData) ? (teamData[1] || '') : '';
+        const normalizedTeamName = rawTeamName
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+
+        if (normalizedTeamName.includes('materiel n2')) {
+            return { icon: 'fa-wrench', class: 'MaterielN2', name: 'MaterielN2', label: 'Matériel N2' };
+        }
+        if (normalizedTeamName.includes('logiciel')) {
+            return { icon: 'fa-laptop', class: 'Logiciel', name: 'Logiciel', label: 'Logiciel' };
+        }
+        if (normalizedTeamName.includes('materiel')) {
+            return { icon: 'fa-wrench', class: 'Materiel', name: 'Materiel', label: 'Matériel' };
+        }
+        if (normalizedTeamName.includes('rma') || normalizedTeamName.includes('sav')) {
+            return { icon: 'fa-exchange', class: 'RMA', name: 'RMA', label: 'RMA/SAV' };
+        }
+
         switch(teamId) {
             case 8:
-                return { icon: 'fa-laptop', class: 'Logiciel', name: 'Logiciel' };
+                return { icon: 'fa-laptop', class: 'Logiciel', name: 'Logiciel', label: 'Logiciel' };
             case 1:
-                return { icon: 'fa-wrench', class: 'Materiel', name: 'Materiel' };
+                return { icon: 'fa-wrench', class: 'Materiel', name: 'Materiel', label: 'Matériel' };
             case 9:
-                return { icon: 'fa-exchange', class: 'RMA', name: 'RMA' };
+                return { icon: 'fa-exchange', class: 'RMA', name: 'RMA', label: 'RMA/SAV' };
+            case 10:
+                return { icon: 'fa-wrench', class: 'MaterielN2', name: 'MaterielN2', label: 'Matériel N2' };
             default:
-                return { icon: 'fa-question', class: 'Unknown', name: 'Inconnu' };
+                return {
+                    icon: 'fa-question',
+                    class: 'Unknown',
+                    name: rawTeamName || 'Inconnu',
+                    label: rawTeamName || 'Inconnu'
+                };
         }
     }
 
@@ -944,7 +995,7 @@
             };
 
             const response = await makeRequest(
-                'https://winprovence.odoo.com/web/dataset/call_kw/account.analytic.line/read',
+                buildOdooUrl('/web/dataset/call_kw/account.analytic.line/read'),
                 'POST',
                 timesheetPayload
             );
@@ -991,11 +1042,11 @@
         }
 
         return tickets.result.records.map(ticket => {
-            const teamInfo = getTeamIconById(ticket.team_id[0]);
+            const teamInfo = getTeamInfo(ticket.team_id);
             const priorityClass = getPriorityClass(ticket.priority);
             const userId = ticket.user_id ? ticket.user_id[0] : null;
             const userName = ticket.user_id ? ticket.user_id[1] : 'Non assigné';
-            const avatarUrl = userId ? `https://winprovence.odoo.com/web/image/res.users/${userId}/avatar_128` : '';
+            const avatarUrl = userId ? buildOdooUrl(`/web/image/res.users/${userId}/avatar_128`) : '';
             const stageName = translateStage(ticket.stage_id[1]);
 
             return `
@@ -1108,7 +1159,7 @@
             };
 
             const data = await makeRequest(
-                'https://winprovence.odoo.com/web/dataset/call_kw/helpdesk.ticket/web_search_read',
+                buildOdooUrl('/web/dataset/call_kw/helpdesk.ticket/web_search_read'),
                 'POST',
                 searchPayload
             );
@@ -1175,7 +1226,7 @@
             try {
                 console.log(`[ODOO-EXT] Requête détails commande ${id}:`, orderPayload);
                 const data = await makeRequestWithDetailed(
-                    'https://winprovence.odoo.com/web/dataset/call_kw/sale.order/read',
+                    buildOdooUrl('/web/dataset/call_kw/sale.order/read'),
                     'POST',
                     orderPayload
                 );
@@ -1233,7 +1284,7 @@
         try {
             console.log(`[ODOO-EXT] Requête détails ticket ${ticketId}:`, readPayload);
             const data = await makeRequestWithDetailed(
-                'https://winprovence.odoo.com/web/dataset/call_kw/helpdesk.ticket/read',
+                buildOdooUrl('/web/dataset/call_kw/helpdesk.ticket/read'),
                 'POST',
                 readPayload
             );
@@ -1506,6 +1557,7 @@
                             <option value="">Toutes les équipes</option>
                             <option value="Logiciel">Logiciel</option>
                             <option value="Materiel">Matériel</option>
+                            <option value="MaterielN2">Matériel N2</option>
                             <option value="RMA">RMA/SAV</option>
                         </select>
                     </div>
@@ -1587,7 +1639,7 @@
         }));
 
         const html = ticketsWithTime.map(ticket => {
-            const teamInfo = getTeamIconById(ticket.team_id[0]);
+            const teamInfo = getTeamInfo(ticket.team_id);
             const priorityClass = getPriorityClass(ticket.priority);
             const stageName = translateStage(ticket.stage_id[1]);
             const userName = ticket.user_id ? ticket.user_id[1] : 'Non assigné';
@@ -1607,7 +1659,7 @@
                     <div class="ticket-info">
                         <div class="ticket-team" data-team="${teamInfo.name}">
                             <i class="fa ${teamInfo.icon}"></i>
-                            ${teamInfo.name}
+                            ${teamInfo.label || teamInfo.name}
                         </div>
                         <div class="ticket-assignee">
                             <i class="fa fa-user"></i>
@@ -1722,7 +1774,7 @@
             console.log('[ODOO-EXT] Envoi de la requête de traçabilité pour le partenaire:', partnerId);
 
             const response = await makeRequestWithDetailed(
-                "https://winprovence.odoo.com/web/dataset/call_kw/stock.traceability.report/get_html",
+                buildOdooUrl('/web/dataset/call_kw/stock.traceability.report/get_html'),
                 "POST",
                 payload
             );
@@ -2305,7 +2357,7 @@
             };
 
             const testResponse = await makeRequestWithDetailed(
-                'https://winprovence.odoo.com/web/dataset/call_kw/res.partner/read',
+                buildOdooUrl('/web/dataset/call_kw/res.partner/read'),
                 'POST',
                 testPayload
             );
@@ -2336,7 +2388,7 @@
             };
 
             const productModelResponse = await makeRequestWithDetailed(
-                'https://winprovence.odoo.com/web/dataset/call_kw/product.product/search_read',
+                buildOdooUrl('/web/dataset/call_kw/product.product/search_read'),
                 'POST',
                 productModelPayload
             );
@@ -2369,7 +2421,7 @@
             };
 
             const productsResponse = await makeRequestWithDetailed(
-                'https://winprovence.odoo.com/web/dataset/call_kw/product.product/web_search_read',
+                buildOdooUrl('/web/dataset/call_kw/product.product/web_search_read'),
                 'POST',
                 productsPayload
             );
